@@ -114,15 +114,23 @@ fi
 echo "Authentication successful (token valid for $(echo "$TOKEN_RESPONSE" | jq -r '.expires_in') seconds)." >&2
 
 # ── Step 2 – Build the API request URL ───────────────────────────────────────
-API_URL="${API_BASE}/relevant/lifecycle/app-streams"
-QUERY_PARAMS=()
+if [[ "$APPSTREAMS_ONLY" == "true" ]]; then
+    if [[ -n "$RHEL_MAJOR" ]]; then
+        API_URL="${API_BASE}/lifecycle/app-streams/${RHEL_MAJOR}"
+    else
+        API_URL="${API_BASE}/lifecycle/app-streams"
+    fi
+else
+    API_URL="${API_BASE}/relevant/lifecycle/app-streams"
+    QUERY_PARAMS=()
 
-if [[ -n "$RHEL_MAJOR" ]]; then
-    QUERY_PARAMS+=("major=${RHEL_MAJOR}")
-fi
+    if [[ -n "$RHEL_MAJOR" ]]; then
+        QUERY_PARAMS+=("major=${RHEL_MAJOR}")
+    fi
 
-if [[ ${#QUERY_PARAMS[@]} -gt 0 ]]; then
-    API_URL="${API_URL}?$(IFS='&'; echo "${QUERY_PARAMS[*]}")"
+    if [[ ${#QUERY_PARAMS[@]} -gt 0 ]]; then
+        API_URL="${API_URL}?$(IFS='&'; echo "${QUERY_PARAMS[*]}")"
+    fi
 fi
 
 # ── Step 3 – Query the Planning API ──────────────────────────────────────────
@@ -154,7 +162,11 @@ elif [[ "$HTTP_STATUS" != "200" ]]; then
 fi
 
 TOTAL=$(echo "$RESPONSE" | jq -r '.meta.count // 0')
-echo "Total app streams returned for your inventory: ${TOTAL}" >&2
+if [[ "$APPSTREAMS_ONLY" == "true" ]]; then
+    echo "Total app streams returned from catalog: ${TOTAL}" >&2
+else
+    echo "Total app streams returned for your inventory: ${TOTAL}" >&2
+fi
 
 # ── Step 4 – Filter for out-of-support (and optionally near-retirement) streams
 if [[ "$INCLUDE_NEAR_RETIREMENT" == "true" ]]; then

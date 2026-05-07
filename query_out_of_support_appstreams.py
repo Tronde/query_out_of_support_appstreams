@@ -181,6 +181,56 @@ def fetch_relevant_appstreams(
     return data.get("data", [])
 
 
+def fetch_all_appstreams(
+    token: str,
+    major: Optional[int] = None,
+) -> list[dict]:
+    """Call the lifecycle catalog API for all known app streams (not scoped to inventory)."""
+    if major is not None:
+        url = f"{API_BASE}/lifecycle/app-streams/{major}"
+    else:
+        url = f"{API_BASE}/lifecycle/app-streams"
+
+    print(f"Querying: GET {url}", file=sys.stderr)
+
+    try:
+        response = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=60,
+        )
+    except requests.exceptions.RequestException as exc:
+        print(f"ERROR: API request failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if response.status_code == 403:
+        print(
+            "ERROR: Access denied (HTTP 403). "
+            "Ensure your service account is in a group with the 'RHEL viewer' role.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if response.status_code != 200:
+        print(
+            f"ERROR: API request failed (HTTP {response.status_code}).\nResponse: {response.text}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        data = response.json()
+    except ValueError:
+        print(f"ERROR: API returned non-JSON response: {response.text[:200]}", file=sys.stderr)
+        sys.exit(1)
+
+    total = data.get("meta", {}).get("count", 0)
+    print(f"Total app streams returned from catalog: {total}", file=sys.stderr)
+    return data.get("data", [])
+
+
 def filter_out_of_support(
     appstreams: list[dict],
     include_near_retirement: bool,
@@ -288,7 +338,10 @@ def main() -> None:
 
     token = get_access_token(client_id, client_secret)
 
-    all_streams = fetch_relevant_appstreams(token, major=args.major)
+    if args.appstreams_only:
+        all_streams = fetch_all_appstreams(token, major=args.major)
+    else:
+        all_streams = fetch_relevant_appstreams(token, major=args.major)
 
     out_of_support = filter_out_of_support(all_streams, args.include_near_retirement)
 
