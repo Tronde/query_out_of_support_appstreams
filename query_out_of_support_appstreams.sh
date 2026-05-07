@@ -24,8 +24,9 @@
 #
 # Options:
 #   --include-near-retirement   Also include streams with status "Near retirement"
-#   --major <version>           Filter by RHEL major version (positive integer, e.g. 8, 9, 10, 11 ...)
+#   --major <version>           Filter by RHEL major version (positive integer, e.g. 8, 9, 10)
 #   --output-format <fmt>       Output format: table (default) or json
+#   --appstreams-only           Only show AppStream name and module name (no host details)
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -36,12 +37,17 @@ API_BASE="https://console.redhat.com/api/roadmap/v1"
 INCLUDE_NEAR_RETIREMENT=false
 RHEL_MAJOR=""
 OUTPUT_FORMAT="table"
+APPSTREAMS_ONLY=false
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --include-near-retirement)
             INCLUDE_NEAR_RETIREMENT=true
+            shift
+            ;;
+        --appstreams-only)
+            APPSTREAMS_ONLY=true
             shift
             ;;
         --major)
@@ -169,7 +175,11 @@ echo "" >&2
 
 # ── Step 5 – Output results ───────────────────────────────────────────────────
 if [[ "$OUTPUT_FORMAT" == "json" ]]; then
-    echo "$FILTERED" | jq .
+    if [[ "$APPSTREAMS_ONLY" == "true" ]]; then
+        echo "$FILTERED" | jq '[.[] | {display_name, name}]'
+    else
+        echo "$FILTERED" | jq .
+    fi
     exit 0
 fi
 
@@ -184,14 +194,22 @@ echo "║       Out-of-Support Application Streams in Your RHEL Inventory       
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-echo "$FILTERED" | jq -r '.[] | 
-    "AppStream  : \(.display_name)",
-    "Module name: \(.name)",
-    "RHEL major : \(.os_major // "N/A")",
-    "Status     : \(.support_status)",
-    "End date   : \(.end_date // "N/A")",
-    "# Systems  : \(.count)",
-    "Systems    :",
-    (.systems_detail[] | "  - \(.display_name)  [RHEL \(.os_major).\(.os_minor // "x")]  id=\(.id)"),
-    "────────────────────────────────────────────────────────────────────────────────"
-'
+if [[ "$APPSTREAMS_ONLY" == "true" ]]; then
+    echo "$FILTERED" | jq -r '.[] |
+        "AppStream  : \(.display_name)",
+        "Module name: \(.name)",
+        "────────────────────────────────────────────────────────────────────────────────"
+    '
+else
+    echo "$FILTERED" | jq -r '.[] |
+        "AppStream  : \(.display_name)",
+        "Module name: \(.name)",
+        "RHEL major : \(.os_major // "N/A")",
+        "Status     : \(.support_status)",
+        "End date   : \(.end_date // "N/A")",
+        "# Systems  : \(.count)",
+        "Systems    :",
+        (.systems_detail[] | "  - \(.display_name)  [RHEL \(.os_major).\(.os_minor // "x")]  id=\(.id)"),
+        "────────────────────────────────────────────────────────────────────────────────"
+    '
+fi

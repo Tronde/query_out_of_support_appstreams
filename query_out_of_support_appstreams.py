@@ -23,8 +23,9 @@ Usage:
 
 Options:
     --include-near-retirement   Also include streams with status "Near retirement"
-    --major <version>           Filter by RHEL major version (8, 9, or 10)
+    --major <version>           Filter by RHEL major version (e.g. 8, 9, 10)
     --output-format <fmt>       table (default), json, or csv
+    --appstreams-only           Only show AppStream name and module name (no host details)
     --help                      Show this help message and exit
 """
 
@@ -70,13 +71,19 @@ def parse_args() -> argparse.Namespace:
         "--major",
         type=positive_int,
         metavar="VERSION",
-        help="Filter by RHEL major version (e.g. 8, 9, 10, 11 ...)",
+        help="Filter by RHEL major version (e.g. 8, 9, 10)",
     )
     parser.add_argument(
         "--output-format",
         choices=["table", "json", "csv"],
         default="table",
         help="Output format: table (default), json, or csv",
+    )
+    parser.add_argument(
+        "--appstreams-only",
+        action="store_true",
+        default=False,
+        help="Only show AppStream name and module name (no host details)",
     )
     return parser.parse_args()
 
@@ -189,7 +196,7 @@ def filter_out_of_support(
     return [s for s in appstreams if s.get("support_status") in target_statuses]
 
 
-def print_table(streams: list[dict]) -> None:
+def print_table(streams: list[dict], appstreams_only: bool = False) -> None:
     if not streams:
         print("No out-of-support application streams found in your inventory.")
         return
@@ -203,55 +210,65 @@ def print_table(streams: list[dict]) -> None:
     for stream in streams:
         print(f"  AppStream  : {stream.get('display_name', 'N/A')}")
         print(f"  Module name: {stream.get('name', 'N/A')}")
-        print(f"  RHEL major : {stream.get('os_major', 'N/A')}")
-        print(f"  Status     : {stream.get('support_status', 'N/A')}")
-        print(f"  End date   : {stream.get('end_date', 'N/A')}")
-        print(f"  # Systems  : {stream.get('count', 0)}")
-        systems = stream.get("systems_detail", [])
-        if systems:
-            print("  Systems    :")
-            for sys_info in systems:
-                os_minor = sys_info.get("os_minor")
-                minor_str = str(os_minor) if os_minor is not None else "x"
-                print(
-                    f"    - {sys_info.get('display_name', 'N/A')}"
-                    f"  [RHEL {sys_info.get('os_major', '?')}.{minor_str}]"
-                    f"  id={sys_info.get('id', 'N/A')}"
-                )
+        if not appstreams_only:
+            print(f"  RHEL major : {stream.get('os_major', 'N/A')}")
+            print(f"  Status     : {stream.get('support_status', 'N/A')}")
+            print(f"  End date   : {stream.get('end_date', 'N/A')}")
+            print(f"  # Systems  : {stream.get('count', 0)}")
+            systems = stream.get("systems_detail", [])
+            if systems:
+                print("  Systems    :")
+                for sys_info in systems:
+                    os_minor = sys_info.get("os_minor")
+                    minor_str = str(os_minor) if os_minor is not None else "x"
+                    print(
+                        f"    - {sys_info.get('display_name', 'N/A')}"
+                        f"  [RHEL {sys_info.get('os_major', '?')}.{minor_str}]"
+                        f"  id={sys_info.get('id', 'N/A')}"
+                    )
         print(f"  {separator}")
 
 
-def print_json(streams: list[dict]) -> None:
-    print(json.dumps(streams, indent=2, default=str))
+def print_json(streams: list[dict], appstreams_only: bool = False) -> None:
+    if appstreams_only:
+        data = [{"display_name": s.get("display_name"), "name": s.get("name")} for s in streams]
+    else:
+        data = streams
+    print(json.dumps(data, indent=2, default=str))
 
 
-def print_csv(streams: list[dict]) -> None:
-    """Flatten systems_detail into one row per system × appstream pair."""
+def print_csv(streams: list[dict], appstreams_only: bool = False) -> None:
+    """One row per appstream when appstreams_only; one row per system × appstream otherwise."""
     writer = csv.writer(sys.stdout)
-    writer.writerow([
-        "appstream_display_name",
-        "module_name",
-        "os_major",
-        "support_status",
-        "end_date",
-        "system_id",
-        "system_display_name",
-        "system_os_major",
-        "system_os_minor",
-    ])
-    for stream in streams:
-        for sys_info in stream.get("systems_detail", []):
-            writer.writerow([
-                stream.get("display_name", ""),
-                stream.get("name", ""),
-                stream.get("os_major", ""),
-                stream.get("support_status", ""),
-                stream.get("end_date", ""),
-                sys_info.get("id", ""),
-                sys_info.get("display_name", ""),
-                sys_info.get("os_major", ""),
-                sys_info.get("os_minor", ""),
-            ])
+    if appstreams_only:
+        writer.writerow(["appstream_display_name", "module_name"])
+        for stream in streams:
+            writer.writerow([stream.get("display_name", ""), stream.get("name", "")])
+    else:
+        writer.writerow([
+            "appstream_display_name",
+            "module_name",
+            "os_major",
+            "support_status",
+            "end_date",
+            "system_id",
+            "system_display_name",
+            "system_os_major",
+            "system_os_minor",
+        ])
+        for stream in streams:
+            for sys_info in stream.get("systems_detail", []):
+                writer.writerow([
+                    stream.get("display_name", ""),
+                    stream.get("name", ""),
+                    stream.get("os_major", ""),
+                    stream.get("support_status", ""),
+                    stream.get("end_date", ""),
+                    sys_info.get("id", ""),
+                    sys_info.get("display_name", ""),
+                    sys_info.get("os_major", ""),
+                    sys_info.get("os_minor", ""),
+                ])
 
 
 def main() -> None:
@@ -279,11 +296,11 @@ def main() -> None:
     print("", file=sys.stderr)
 
     if args.output_format == "json":
-        print_json(out_of_support)
+        print_json(out_of_support, appstreams_only=args.appstreams_only)
     elif args.output_format == "csv":
-        print_csv(out_of_support)
+        print_csv(out_of_support, appstreams_only=args.appstreams_only)
     else:
-        print_table(out_of_support)
+        print_table(out_of_support, appstreams_only=args.appstreams_only)
 
 
 if __name__ == "__main__":

@@ -83,6 +83,12 @@ chmod +x query_out_of_support_appstreams.sh
 
 # Output raw JSON instead of the human-readable table
 ./query_out_of_support_appstreams.sh --output-format json
+
+# Show only AppStream and module names, without host details
+./query_out_of_support_appstreams.sh --appstreams-only
+
+# Combine flags: near-retirement streams on RHEL 8, names only, as JSON
+./query_out_of_support_appstreams.sh --include-near-retirement --major 8 --appstreams-only --output-format json
 ```
 
 ## Python script
@@ -110,6 +116,12 @@ python3 query_out_of_support_appstreams.py --output-format json
 
 # Output as CSV (one row per system × appstream pair)
 python3 query_out_of_support_appstreams.py --output-format csv > out_of_support.csv
+
+# Show only AppStream and module names, without host details
+python3 query_out_of_support_appstreams.py --appstreams-only
+
+# Combine flags: near-retirement streams on RHEL 8, names only, as CSV
+python3 query_out_of_support_appstreams.py --include-near-retirement --major 8 --appstreams-only --output-format csv > near_retirement.csv
 ```
 
 ## Example output (table format)
@@ -128,6 +140,21 @@ python3 query_out_of_support_appstreams.py --output-format csv > out_of_support.
   Systems    :
     - server01.example.com  [RHEL 8.9]  id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     - server02.example.com  [RHEL 8.10] id=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
+  ────────────────────────────────────────────────────────────────────────────────
+```
+
+## Example output (`--appstreams-only`)
+
+```
+════════════════════════════════════════════════════════════════════════════════
+  Out-of-Support Application Streams in Your RHEL Inventory
+════════════════════════════════════════════════════════════════════════════════
+
+  AppStream  : Node.js 16
+  Module name: nodejs
+  ────────────────────────────────────────────────────────────────────────────────
+  AppStream  : Python 3.6
+  Module name: python36
   ────────────────────────────────────────────────────────────────────────────────
 ```
 
