@@ -57,11 +57,20 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Also include streams with status 'Near retirement'",
     )
+    def positive_int(value: str) -> int:
+        try:
+            intval = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"--major must be a positive integer, got: {value!r}")
+        if intval < 1:
+            raise argparse.ArgumentTypeError(f"--major must be a positive integer, got: {intval}")
+        return intval
+
     parser.add_argument(
         "--major",
-        type=int,
-        choices=[8, 9, 10],
-        help="Filter by RHEL major version (8, 9, or 10)",
+        type=positive_int,
+        metavar="VERSION",
+        help="Filter by RHEL major version (e.g. 8, 9, 10, 11 ...)",
     )
     parser.add_argument(
         "--output-format",
@@ -75,16 +84,21 @@ def parse_args() -> argparse.Namespace:
 def get_access_token(client_id: str, client_secret: str) -> str:
     """Obtain a short-lived Bearer token from Red Hat SSO using client credentials."""
     print("Authenticating with Red Hat SSO...", file=sys.stderr)
-    response = requests.post(
-        SSO_URL,
-        data={
-            "grant_type": "client_credentials",
-            "scope": "api.console",
-            "client_id": client_id,
-            "client_secret": client_secret,
-        },
-        timeout=30,
-    )
+    try:
+        response = requests.post(
+            SSO_URL,
+            data={
+                "grant_type": "client_credentials",
+                "scope": "api.console",
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            timeout=30,
+        )
+    except requests.exceptions.RequestException as exc:
+        print(f"ERROR: SSO request failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     if response.status_code != 200:
         print(
             f"ERROR: Authentication failed (HTTP {response.status_code}).\n"
@@ -93,7 +107,12 @@ def get_access_token(client_id: str, client_secret: str) -> str:
         )
         sys.exit(1)
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError:
+        print(f"ERROR: SSO returned non-JSON response: {response.text[:200]}", file=sys.stderr)
+        sys.exit(1)
+
     token = payload.get("access_token")
     if not token:
         print(f"ERROR: No access_token in SSO response: {payload}", file=sys.stderr)
@@ -116,15 +135,19 @@ def fetch_relevant_appstreams(
 
     print(f"Querying: GET {url}  params={params}", file=sys.stderr)
 
-    response = requests.get(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        params=params,
-        timeout=60,
-    )
+    try:
+        response = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            params=params,
+            timeout=60,
+        )
+    except requests.exceptions.RequestException as exc:
+        print(f"ERROR: API request failed: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if response.status_code == 403:
         print(
@@ -140,7 +163,12 @@ def fetch_relevant_appstreams(
         )
         sys.exit(1)
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        print(f"ERROR: API returned non-JSON response: {response.text[:200]}", file=sys.stderr)
+        sys.exit(1)
+
     total = data.get("meta", {}).get("count", 0)
     print(f"Total app streams returned for your inventory: {total}", file=sys.stderr)
     return data.get("data", [])

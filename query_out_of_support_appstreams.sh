@@ -20,11 +20,11 @@
 # Usage:
 #   export RH_CLIENT_ID="<your-service-account-client-id>"
 #   export RH_CLIENT_SECRET="<your-service-account-client-secret>"
-#   ./query_out_of_support_appstreams.sh [--include-near-retirement] [--major 8|9|10]
+#   ./query_out_of_support_appstreams.sh [--include-near-retirement] [--major <version>]
 #
 # Options:
 #   --include-near-retirement   Also include streams with status "Near retirement"
-#   --major <version>           Filter by RHEL major version (8, 9, or 10)
+#   --major <version>           Filter by RHEL major version (positive integer, e.g. 8, 9, 10, 11 ...)
 #   --output-format <fmt>       Output format: table (default) or json
 # ---------------------------------------------------------------------------
 
@@ -45,10 +45,17 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --major)
+            [[ $# -ge 2 ]] || { echo "ERROR: --major requires a value" >&2; exit 1; }
+            [[ "$2" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: --major must be a positive integer (e.g. 8, 9, 10)" >&2; exit 1; }
             RHEL_MAJOR="$2"
             shift 2
             ;;
         --output-format)
+            [[ $# -ge 2 ]] || { echo "ERROR: --output-format requires a value" >&2; exit 1; }
+            case "$2" in
+                table|json) ;;
+                *) echo "ERROR: --output-format must be 'table' or 'json'" >&2; exit 1 ;;
+            esac
             OUTPUT_FORMAT="$2"
             shift 2
             ;;
