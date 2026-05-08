@@ -202,7 +202,7 @@ if [[ "$MATCH_COUNT" -eq 0 ]]; then
 fi
 
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
-echo "║       Out-of-Support Application Streams in Your RHEL Inventory             ║"
+echo "║       Out-of-Support Application Streams in Your RHEL Inventory              ║"
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
