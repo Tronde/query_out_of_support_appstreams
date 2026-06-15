@@ -6,6 +6,8 @@ with a support status of **Retired** (out of support).
 
 This is a proof of concept. Continue at your own risk. Feedback and comments are welcome, please use the issue tracker for it.
 
+The `main` branch contains the latest developer version of this PoC. Please check the released version which were tested in my lab environment.
+
 ## Background
 
 Red Hat RHEL 8+ ships software via [Application Streams](https://access.redhat.com/support/policy/updates/rhel-app-streams-life-cycle).
@@ -57,8 +59,10 @@ export RH_CLIENT_SECRET="<your-client-secret>"
 
 | File | Description |
 |---|---|
-| `query_out_of_support_appstreams.sh` | Bash script (requires `curl` and `jq`) |
-| `query_out_of_support_appstreams.py` | Python 3 script (requires `requests`) |
+| `query_out_of_support_appstreams.sh` | Bash — query Hybrid Cloud Console inventory for retired AppStreams (requires `curl` and `jq`) |
+| `query_out_of_support_appstreams.py` | Python 3 — same as above (requires `requests`) |
+| `check_satellite_retired_appstreams.sh` | Bash — cross-reference Satellite hosts against the retired catalog (requires `curl` and `jq`) |
+| `check_satellite_retired_appstreams.py` | Python 3 — same as above (requires `requests`) |
 
 ## Bash script
 
@@ -158,9 +162,117 @@ python3 query_out_of_support_appstreams.py --include-near-retirement --major 8 -
   ────────────────────────────────────────────────────────────────────────────────
 ```
 
+---
+
+## Satellite — Check Content Hosts for Retired AppStreams
+
+The `check_satellite_retired_appstreams.*` scripts extend the approach above by
+cross-referencing the Lightspeed retired-AppStream catalog against actual module
+streams reported by a **Red Hat Satellite** server.
+
+### How it works
+
+1. Authenticate to Red Hat SSO and obtain a Bearer token (same as above).
+2. Query the Lightspeed lifecycle catalog for all retired (and optionally
+   near-retirement) AppStream module streams.
+3. Paginate through all content hosts registered in Satellite
+   (`GET <SAT_URL>/api/hosts`).
+4. For each host, retrieve its module streams
+   (`GET <SAT_URL>/api/hosts/:id/module_streams`) and cross-reference against
+   the retired set.
+5. Print a report of every host that has a retired AppStream **enabled or
+   installed**.
+
+A host is only flagged if the matching module stream has
+`install_status != "Not installed"` or `status == "enabled"`.
+
+Matching is done on both module **name** (e.g. `nodejs`) and **stream version**
+(e.g. `16`, extracted from the Lightspeed `display_name` field) to avoid false
+positives such as flagging `nodejs:18` when only `nodejs:16` is retired.
+
+### Additional prerequisites
+
+- A **Satellite user account** with at least **View hosts** permission.
+- Export credentials before running:
+
+```bash
+export SAT_USER="<satellite-username>"
+export SAT_PASSWORD="<satellite-password>"
+```
+
+### Bash script
+
+```bash
+chmod +x check_satellite_retired_appstreams.sh
+
+# Basic usage
+./check_satellite_retired_appstreams.sh
+
+# Use a different Satellite server and restrict to RHEL 8
+./check_satellite_retired_appstreams.sh --sat-url https://satellite.example.com --major 8
+
+# Also flag "Near retirement" streams, output as JSON
+./check_satellite_retired_appstreams.sh --include-near-retirement --output-format json
+
+# Increase parallel host queries
+./check_satellite_retired_appstreams.sh --workers 10
+
+# Enable SSL certificate verification (disabled by default for lab environments)
+./check_satellite_retired_appstreams.sh --verify
+```
+
+### Python script
+
+```bash
+# Basic usage
+python3 check_satellite_retired_appstreams.py
+
+# Use a different Satellite server and restrict to RHEL 9
+python3 check_satellite_retired_appstreams.py --sat-url https://satellite.example.com --major 9
+
+# Also include "Near retirement" streams, output as JSON
+python3 check_satellite_retired_appstreams.py --include-near-retirement --output-format json
+
+# Save JSON output to a file
+python3 check_satellite_retired_appstreams.py --output-format json > retired_report.json
+
+# Enable SSL certificate verification
+python3 check_satellite_retired_appstreams.py --verify
+```
+
+### Example output (Satellite)
+
+```
+Authenticating with Red Hat SSO...
+Authentication successful (token valid for 300 seconds).
+Querying Lightspeed catalog: GET https://console.redhat.com/api/roadmap/v1/lifecycle/app-streams
+Filtering for status: Retired
+Retired AppStreams found in Lightspeed catalog: 12
+Collecting content hosts from Satellite: https://sat-1.example.com
+Total hosts to check: 5
+Checking module streams on each host (parallel jobs: 5)...
+  [1/5] rhel8-client-01.example.com → MATCH
+  [2/5] rhel9-server-01.example.com → clean
+  ...
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║       Satellite Content Hosts with Retired AppStreams Installed              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Host: rhel8-client-01.example.com  (id=3)
+  [RETIRED] nodejs:16  (Node.js 16, status: enabled, install_status: Up-to-date, until: 2024-04-30)
+
+Host: rhel8-client-02.example.com  (id=4)
+  [RETIRED] python36:3.6  (Python 3.6, status: enabled, install_status: Installed, until: 2024-10-31)
+
+────────────────────────────────────────────────────────────────────────────────
+Summary: 2 host(s) with retired AppStreams found out of 5 checked.
+```
+
 ## References
 
 - [Using APIs to configure Red Hat Lightspeed services](https://docs.redhat.com/en/documentation/red_hat_lightspeed/1-latest/html-single/using_apis_to_configure_red_hat_lightspeed_services/index)
 - [How to query the Red Hat Insights API for RHEL Application Streams lifecycle information](https://access.redhat.com/articles/7129267)
 - [RHEL Application Streams Life Cycle policy](https://access.redhat.com/support/policy/updates/rhel-app-streams-life-cycle)
 - [Planning API OpenAPI specification](https://console.redhat.com/api/roadmap/v1/openapi.json)
+- [Red Hat Satellite REST API — Using the API](https://docs.redhat.com/en/documentation/red_hat_satellite/6.19/html-single/using_the_satellite_rest_api/index)
